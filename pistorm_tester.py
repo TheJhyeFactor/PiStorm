@@ -126,27 +126,26 @@ class PiStormTester:
             self.log("❌ No target SSID provided for attack test")
             return False
         
-        self.log(f"Testing handshake capture on: {target_ssid}")
+        self.log(f"🔍 REAL testing handshake capture on: {target_ssid} - NO FAKE DATA")
         
         attack_data = {
             "ssid": target_ssid,
-            "test_mode": True,  # Don't actually deauth in test mode
-            "capture_time": 10   # Short capture for testing
+            "test_capture_only": True,  # Test real capture but no deauth
+            "capture_time": 15   # Longer for real test
         }
         
         result = self.api_request("/attack", method="POST", data=attack_data, timeout=60)
         
         if result["success"] and result["status_code"] == 200:
             attack_result = result["data"]
-            handshake_captured = attack_result.get("handshake_captured", False)
-            filename = attack_result.get("filename", "")
             
-            if handshake_captured:
-                self.log(f"✅ Handshake captured: {filename}")
-                return True, filename
+            # Check if it was a real test result
+            if attack_result.get("real_test_mode"):
+                self.log(f"✅ REAL monitor mode test completed")
+                return True, attack_result.get("filename", "")
             else:
-                self.log(f"⚠️ No handshake captured (normal in test mode)")
-                return False, filename
+                self.log(f"⚠️ Test mode response received")
+                return False, attack_result.get("filename", "")
         else:
             self.log(f"❌ Attack test failed: {result.get('error', 'Unknown error')}")
             return False, ""

@@ -162,10 +162,54 @@ def validate_ssid(ssid):
         return False, "SSID contains invalid characters"
     return True, "Valid"
 
-def setup_monitor_mode(interface):
-    """Set interface to monitor mode"""
+def verify_monitor_capture(interface):
+    """Verify monitor mode can actually capture real packets - NO FAKE DATA"""
     try:
-        logger.info(f"Setting {interface} to monitor mode")
+        logger.info(f"🔍 VERIFYING {interface} can capture REAL packets...")
+        
+        # Clean up any test files
+        run_cmd("sudo rm -f /tmp/monitor_verify*", timeout=5)
+        
+        # Quick tcpdump test (most reliable)
+        logger.info("Testing with tcpdump for 3 seconds...")
+        cmd = f"timeout 3 sudo tcpdump -i {interface} -c 5 -w /tmp/monitor_verify.pcap 2>/dev/null"
+        rc, out, err = run_cmd(cmd, timeout=6)
+        
+        if os.path.exists("/tmp/monitor_verify.pcap"):
+            size = os.path.getsize("/tmp/monitor_verify.pcap")
+            logger.info(f"📏 Verification capture: {size} bytes")
+            
+            if size > 50:  # More than just headers
+                logger.info("✅ REAL packets captured - monitor mode working!")
+                run_cmd("sudo rm -f /tmp/monitor_verify*", timeout=5)
+                return True
+            else:
+                logger.warning(f"⚠️ Only {size} bytes captured - may be header only")
+        
+        logger.error("❌ No real packets captured in verification")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Monitor verification error: {e}")
+        return False
+
+def setup_monitor_mode(interface):
+    """Set interface to monitor mode - ROBUST VERSION FOR REAL PACKET CAPTURE"""
+    try:
+        logger.info(f"Setting {interface} to monitor mode - KILLING INTERFERING PROCESSES")
+        
+        # CRITICAL: Kill all interfering processes first
+        interfering_processes = [
+            "sudo pkill -f wpa_supplicant",
+            "sudo pkill -f NetworkManager", 
+            "sudo systemctl stop NetworkManager 2>/dev/null || true",
+            "sudo systemctl stop wpa_supplicant 2>/dev/null || true",
+        ]
+        
+        for cmd in interfering_processes:
+            logger.info(f"Running: {cmd}")
+            run_cmd(cmd, timeout=10)
+            time.sleep(0.5)
         
         # Check if interface exists
         rc_check, _, _ = run_cmd(f"ip link show {interface}", timeout=5)
@@ -177,32 +221,51 @@ def setup_monitor_mode(interface):
         rc_info, out_info, _ = run_cmd(f"iw dev {interface} info", timeout=5)
         if rc_info == 0 and "type monitor" in out_info:
             logger.info(f"Interface {interface} already in monitor mode")
-            return True
+            # Still verify it can capture packets
+            if verify_monitor_capture(interface):
+                return True
+            else:
+                logger.warning("Monitor mode set but cannot capture packets, resetting...")
         
-        # Bring interface down
-        rc1, out1, err1 = run_cmd(f"sudo ip link set {interface} down", timeout=10)
-        if rc1 != 0:
-            logger.error(f"Failed to bring interface down: {err1}")
-            return False
+        logger.info("🔧 ROBUST MONITOR MODE SETUP - NO FAKE DATA")
+        
+        # Full interface reset
+        logger.info("⬇️ Taking interface down completely...")
+        run_cmd(f"sudo ip link set {interface} down", timeout=10)
+        time.sleep(2)
+        
+        # Remove from any master/bridge
+        run_cmd(f"sudo ip link set {interface} nomaster", timeout=5)
         
         # Set to monitor mode
+        logger.info("📡 Setting monitor mode...")
         rc2, out2, err2 = run_cmd(f"sudo iw dev {interface} set type monitor", timeout=10)
         if rc2 != 0:
             logger.error(f"Failed to set monitor mode: {err2}")
             return False
         
         # Bring interface up
+        logger.info("⬆️ Bringing interface up...")
         rc3, out3, err3 = run_cmd(f"sudo ip link set {interface} up", timeout=10)
         if rc3 != 0:
             logger.error(f"Failed to bring interface up: {err3}")
             return False
         
+        # Wait for interface to stabilize
+        time.sleep(3)
+        
         # Verify monitor mode was set
-        time.sleep(1)
         rc_verify, out_verify, _ = run_cmd(f"iw dev {interface} info", timeout=5)
         if rc_verify == 0 and "type monitor" in out_verify:
-            logger.info(f"Successfully set {interface} to monitor mode")
-            return True
+            logger.info(f"✅ Successfully set {interface} to monitor mode")
+            
+            # CRITICAL: Verify it can actually capture packets
+            if verify_monitor_capture(interface):
+                logger.info("✅ Monitor mode verified with REAL packet capture")
+                return True
+            else:
+                logger.error("❌ Monitor mode set but CANNOT capture real packets!")
+                return False
         else:
             logger.error(f"Monitor mode verification failed for {interface}")
             return False

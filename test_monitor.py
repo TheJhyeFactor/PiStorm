@@ -19,8 +19,8 @@ def run_cmd(cmd, timeout=30):
         return -1, "", "timeout"
 
 def test_monitor_mode():
-    """Test monitor mode functionality"""
-    print("🔍 Testing Monitor Mode Functionality")
+    """Test monitor mode functionality - REAL PACKET CAPTURE"""
+    print("🔍 Testing Monitor Mode Functionality - NO FAKE DATA")
     print("=" * 50)
     
     mon_iface = "wlan1"
@@ -34,19 +34,47 @@ def test_monitor_mode():
     else:
         print(f"✅ Interface {mon_iface} exists")
     
-    # 2. Check current mode
-    print(f"🔧 Checking current mode...")
-    rc, out, err = run_cmd(f"iwconfig {mon_iface}")
-    if "Mode:Monitor" in out:
-        print(f"✅ Already in monitor mode")
-    else:
-        print(f"⚠️ Not in monitor mode. Current: {out}")
-        
-        # Set to monitor mode
-        print(f"🔧 Setting to monitor mode...")
-        run_cmd(f"sudo ip link set {mon_iface} down")
-        run_cmd(f"sudo iw dev {mon_iface} set type monitor")
-        run_cmd(f"sudo ip link set {mon_iface} up")
+    # 2. Kill interfering processes first - CRITICAL FIX
+    print("🔪 Killing interfering processes...")
+    interfering_processes = [
+        "sudo pkill -f wpa_supplicant",
+        "sudo pkill -f NetworkManager", 
+        "sudo systemctl stop NetworkManager",
+        "sudo systemctl stop wpa_supplicant",
+        "sudo airmon-ng check kill"
+    ]
+    
+    for cmd in interfering_processes:
+        print(f"Running: {cmd}")
+        run_cmd(cmd, timeout=10)
+        time.sleep(1)
+    
+    # 3. Proper monitor mode setup with full reset
+    print(f"🔧 Setting up monitor mode properly...")
+    
+    # Take interface down completely
+    print("⬇️ Taking interface down...")
+    run_cmd(f"sudo ip link set {mon_iface} down")
+    time.sleep(2)
+    
+    # Force remove from any bridge/master
+    run_cmd(f"sudo ip link set {mon_iface} nomaster", timeout=5)
+    
+    # Set monitor mode
+    print("📡 Setting monitor mode...")
+    rc, out, err = run_cmd(f"sudo iw dev {mon_iface} set type monitor")
+    if rc != 0:
+        print(f"❌ Failed to set monitor mode: {err}")
+        return False
+    
+    # Bring interface up
+    print("⬆️ Bringing interface up...")
+    rc, out, err = run_cmd(f"sudo ip link set {mon_iface} up")
+    if rc != 0:
+        print(f"❌ Failed to bring interface up: {err}")
+        return False
+    
+    time.sleep(3)  # Let interface stabilize
         
         # Verify
         rc, out, err = run_cmd(f"iwconfig {mon_iface}")
@@ -56,19 +84,69 @@ def test_monitor_mode():
             print(f"❌ Failed to set monitor mode!")
             return False
     
-    # 3. Test packet capture
-    print(f"📦 Testing packet capture (15 seconds on channel 6)...")
+    # 4. Verify monitor mode is actually working
+    print("🔍 Verifying monitor mode status...")
+    rc, out, err = run_cmd(f"iwconfig {mon_iface}")
+    if "Mode:Monitor" not in out:
+        print(f"❌ Monitor mode verification failed!")
+        print(f"Output: {out}")
+        return False
+    print("✅ Monitor mode verified")
     
-    # Set to a common channel first
-    print(f"🔧 Setting to channel 6...")
-    run_cmd(f"sudo iwconfig {mon_iface} channel 6")
-    time.sleep(2)
+    # 5. Test basic packet capture with multiple methods
+    print(f"📦 Testing REAL packet capture - NO FAKE DATA...")
     
-    # Start airodump for 15 seconds
-    cmd = f"timeout 15 sudo airodump-ng -w /tmp/monitor_test --output-format pcap --channel 6 {mon_iface}"
-    print(f"Running: {cmd}")
+    # Clean up any old test files
+    run_cmd("sudo rm -f /tmp/monitor_test*")
     
-    rc, out, err = run_cmd(cmd, timeout=20)
+    # Method 1: Try tcpdump first (more reliable)
+    print("🔧 Testing with tcpdump (5 seconds)...")
+    cmd = f"timeout 5 sudo tcpdump -i {mon_iface} -c 10 -w /tmp/monitor_tcpdump.pcap"
+    rc, out, err = run_cmd(cmd, timeout=8)
+    
+    if os.path.exists("/tmp/monitor_tcpdump.pcap"):
+        size = os.path.getsize("/tmp/monitor_tcpdump.pcap")
+        print(f"📏 tcpdump captured {size} bytes")
+        if size > 24:
+            print("✅ tcpdump successfully capturing packets!")
+            return True
+    
+    # Method 2: Try airodump-ng with different parameters
+    print("🔧 Testing with airodump-ng...")
+    
+    # Set to active channel first
+    active_channels = [6, 1, 11, 3, 9]
+    
+    for channel in active_channels:
+        print(f"🔧 Trying channel {channel}...")
+        run_cmd(f"sudo iwconfig {mon_iface} channel {channel}")
+        time.sleep(1)
+        
+        # Use simpler airodump command
+        cmd = f"timeout 8 sudo airodump-ng --write /tmp/monitor_test_ch{channel} --output-format pcap {mon_iface}"
+        print(f"Running: {cmd}")
+        
+        rc, out, err = run_cmd(cmd, timeout=12)
+        
+        # Check for any generated files
+        test_files = [
+            f"/tmp/monitor_test_ch{channel}-01.cap",
+            f"/tmp/monitor_test_ch{channel}.cap", 
+            f"/tmp/monitor_test_ch{channel}-01.pcap"
+        ]
+        
+        for test_file in test_files:
+            if os.path.exists(test_file):
+                size = os.path.getsize(test_file)
+                print(f"📏 Found {test_file}: {size} bytes")
+                if size > 100:
+                    print(f"✅ Channel {channel} - Real packets captured!")
+                    return True
+        
+        print(f"⚠️ Channel {channel} - No significant packets")
+    
+    print("❌ No real packets captured on any channel!")
+    return False
     
     # Check if file was created
     cap_files = [
