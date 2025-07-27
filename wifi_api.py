@@ -2129,9 +2129,9 @@ def analyze_latest_capture():
 
 # -------------- TESTING ENDPOINTS --------------------
 
-@app.route("/ping", methods=["GET"])
-def ping():
-    """Simple connectivity test"""
+@app.route("/test_ping", methods=["GET"])
+def test_ping():
+    """Enhanced connectivity test for testing interface"""
     return jsonify({"status": "pong", "timestamp": datetime.now().isoformat()}), 200
 
 @app.route("/health", methods=["GET"])

@@ -70,7 +70,7 @@ class PiStormTester:
     def test_api_connectivity(self):
         """Test basic API connectivity"""
         self.log("Testing API connectivity...")
-        result = self.api_request("/ping")
+        result = self.api_request("/test_ping")
         
         if result["success"]:
             self.log(f"✅ API connected ({result['response_time']:.2f}s)")
