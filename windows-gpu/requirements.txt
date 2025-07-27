@@ -1,0 +1,26 @@
+# PiStorm Windows GPU Station Requirements
+
+# File monitoring
+watchdog>=3.0.0
+
+# HTTP requests for Pi communication
+requests>=2.31.0
+
+# Process monitoring
+psutil>=5.9.0
+
+# Path handling (built-in but listed for clarity)
+pathlib
+
+# System and OS operations (built-in)
+# os, subprocess, time, logging, datetime
+
+# Note: These system tools must be installed separately:
+# - hashcat (https://hashcat.net/hashcat/)
+# - NVIDIA GPU drivers with CUDA support
+# - hcxtools (via WSL: sudo apt install hcxtools)
+# - Wordlists (rockyou.txt, etc.)
+
+# Optional tools (install via system package manager):
+# - aircrack-ng suite (for backup conversion)
+# - 7-zip (for extracting compressed wordlists)

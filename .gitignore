@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Capture files
+*.cap
+*.pcap
+*.hccapx
+*.22000
+
+# Config files with secrets
+config.env
+*.key
+*.pem
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Results
+results/
+captures/
+wordlists/
+incoming/
+
+# Temporary files
+/tmp/
+temp/
+*.tmp
+
+# Backup files
+*.bak
+*.backup
+
+# System files
+.Trash-*/
+.nfs*
+
+# GPU processing
+*.hashes
+*.potfile
+
+# Test files
+test_*.cap
+monitor_test*
