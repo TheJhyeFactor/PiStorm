@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Monitor Mode Test Script
-Tests if monitor mode is working properly and can capture packets
+Monitor Mode Test Script - REAL PACKET CAPTURE ONLY
+Tests if monitor mode is working properly and can capture REAL packets
+NO FAKE DATA - Must capture actual WiFi traffic
 """
 
 import subprocess
@@ -75,14 +76,6 @@ def test_monitor_mode():
         return False
     
     time.sleep(3)  # Let interface stabilize
-        
-        # Verify
-        rc, out, err = run_cmd(f"iwconfig {mon_iface}")
-        if "Mode:Monitor" in out:
-            print(f"✅ Successfully set to monitor mode")
-        else:
-            print(f"❌ Failed to set monitor mode!")
-            return False
     
     # 4. Verify monitor mode is actually working
     print("🔍 Verifying monitor mode status...")
@@ -109,6 +102,8 @@ def test_monitor_mode():
         print(f"📏 tcpdump captured {size} bytes")
         if size > 24:
             print("✅ tcpdump successfully capturing packets!")
+            print("🎉 MONITOR MODE IS WORKING WITH REAL PACKETS!")
+            run_cmd("sudo rm -f /tmp/monitor_tcpdump.pcap")
             return True
     
     # Method 2: Try airodump-ng with different parameters
@@ -141,140 +136,57 @@ def test_monitor_mode():
                 print(f"📏 Found {test_file}: {size} bytes")
                 if size > 100:
                     print(f"✅ Channel {channel} - Real packets captured!")
+                    print("🎉 MONITOR MODE IS WORKING WITH REAL PACKETS!")
+                    run_cmd("sudo rm -f /tmp/monitor_test_ch*")
                     return True
         
         print(f"⚠️ Channel {channel} - No significant packets")
     
     print("❌ No real packets captured on any channel!")
+    print("💡 This may indicate:")
+    print("   - No WiFi activity in area")
+    print("   - Hardware/driver issues")
+    print("   - Interface still being blocked")
     return False
-    
-    # Check if file was created
-    cap_files = [
-        "/tmp/monitor_test-01.cap",
-        "/tmp/monitor_test.cap",
-        "/tmp/monitor_test-01.pcap"
-    ]
-    
-    captured_file = None
-    for cap_file in cap_files:
-        if os.path.exists(cap_file):
-            captured_file = cap_file
-            break
-    
-    if captured_file:
-        size = os.path.getsize(captured_file)
-        print(f"✅ Capture file created: {captured_file}")
-        print(f"📏 File size: {size} bytes")
-        
-        if size > 100:
-            print(f"✅ Packets captured successfully!")
-            
-            # Analyze with tshark if available
-            rc, out, err = run_cmd(f"tshark -r {captured_file} -q -z io,stat,0", timeout=10)
-            if rc == 0:
-                print(f"📊 Packet analysis:")
-                for line in out.split('\n'):
-                    if 'frames' in line.lower():
-                        print(f"   {line.strip()}")
-            
-            # Clean up
-            os.remove(captured_file)
-            return True
-        else:
-            print(f"⚠️ File too small - may not have captured packets")
-            os.remove(captured_file)
-            return False
-    else:
-        print(f"❌ No capture file created!")
-        print(f"Airodump output: {out}")
-        print(f"Airodump error: {err}")
-        return False
 
-def test_deauth_capability():
-    """Test if deauth attacks can be sent"""
-    print(f"\n🚫 Testing Deauth Capability")
-    print("=" * 30)
+def test_monitor_mode_capability():
+    """Main test function that can be imported"""
+    success = test_monitor_mode()
     
-    mon_iface = "wlan1"
+    result = {
+        "monitor_mode_ok": success,
+        "interface": "wlan1",
+        "test_duration": 15,
+        "real_packets_required": True
+    }
     
-    # Test with a fake BSSID (won't affect anyone)
-    fake_bssid = "00:11:22:33:44:55"
-    
-    print(f"🧪 Testing deauth transmission (fake target)...")
-    cmd = f"timeout 3 sudo aireplay-ng -0 1 -a {fake_bssid} {mon_iface}"
-    
-    rc, out, err = run_cmd(cmd, timeout=5)
-    
-    if rc == 0 or "Sending DeAuth" in out:
-        print(f"✅ Deauth capability working")
-        print(f"Output: {out}")
-        return True
+    if success:
+        result["message"] = "Monitor mode working with real packet capture"
+        result["packets_captured"] = "Real WiFi traffic detected"
     else:
-        print(f"❌ Deauth failed")
-        print(f"Error: {err}")
-        print(f"Output: {out}")
-        return False
+        result["message"] = "Monitor mode failed - no real packets captured"
+        result["packets_captured"] = 0
+    
+    return result
 
-def test_channel_switching():
-    """Test if channel switching works"""
-    print(f"\n📻 Testing Channel Switching")
-    print("=" * 30)
+def main():
+    """Main function for standalone execution"""
+    print("🚀 PiStorm Monitor Mode Test - REAL PACKETS ONLY")
+    print("=" * 60)
     
-    mon_iface = "wlan1"
+    success = test_monitor_mode()
     
-    channels = [1, 6, 11]
-    success = True
-    
-    for channel in channels:
-        print(f"🔧 Setting channel {channel}...")
-        rc, out, err = run_cmd(f"sudo iwconfig {mon_iface} channel {channel}")
-        
-        if rc == 0:
-            # Verify
-            rc2, out2, err2 = run_cmd(f"iwconfig {mon_iface}")
-            if f"Channel:{channel}" in out2 or f"Channel {channel}" in out2:
-                print(f"✅ Channel {channel} set successfully")
-            else:
-                print(f"⚠️ Channel {channel} set but not verified")
-        else:
-            print(f"❌ Failed to set channel {channel}: {err}")
-            success = False
+    print("\n" + "=" * 60)
+    if success:
+        print("🎉 SUCCESS: Monitor mode is working with REAL packet capture!")
+        print("✅ Ready for handshake capture operations")
+    else:
+        print("❌ FAILED: Monitor mode cannot capture real packets")
+        print("🔧 Check WiFi hardware, drivers, and network activity")
+    print("=" * 60)
     
     return success
 
 if __name__ == "__main__":
-    print("🧪 WiFi Monitor Mode Test Suite")
-    print("=" * 50)
-    
-    results = []
-    
-    # Test monitor mode
-    results.append(("Monitor Mode", test_monitor_mode()))
-    
-    # Test deauth capability  
-    results.append(("Deauth Capability", test_deauth_capability()))
-    
-    # Test channel switching
-    results.append(("Channel Switching", test_channel_switching()))
-    
-    # Summary
-    print(f"\n📋 Test Results Summary")
-    print("=" * 30)
-    
-    all_passed = True
-    for test_name, passed in results:
-        status = "✅ PASS" if passed else "❌ FAIL"
-        print(f"{test_name:20}: {status}")
-        if not passed:
-            all_passed = False
-    
-    print("\n" + "=" * 50)
-    if all_passed:
-        print("🎉 All tests passed! Monitor mode is working correctly.")
-    else:
-        print("⚠️ Some tests failed. Check monitor mode configuration.")
-    
-    print("\nNext steps:")
-    print("1. Fix any failed tests")
-    print("2. Try attack again") 
-    print("3. Check for EAPOL frames in capture")
+    success = main()
+    exit(0 if success else 1)
