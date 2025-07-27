@@ -1,0 +1,6 @@
+# Large files - download separately as per README instructions
+wordlists/rockyou.txt
+wordlists/10-million-password-list-top-1000000.txt
+*.zip
+hcxtools-*.zip
+SecLists/
