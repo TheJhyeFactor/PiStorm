@@ -170,9 +170,9 @@ def verify_monitor_capture(interface):
         # Clean up any test files
         run_cmd("sudo rm -f /tmp/monitor_verify*", timeout=5)
         
-        # Quick tcpdump test (most reliable)
+        # Quick tcpdump test (most reliable) - FIXED SYNTAX
         logger.info("Testing with tcpdump for 3 seconds...")
-        cmd = f"timeout 3 sudo tcpdump -i {interface} -c 5 -w /tmp/monitor_verify.pcap 2>/dev/null"
+        cmd = f"timeout 3 sudo tcpdump -i {interface} -c 5 -w /tmp/monitor_verify.pcap"
         rc, out, err = run_cmd(cmd, timeout=6)
         
         if os.path.exists("/tmp/monitor_verify.pcap"):
@@ -1395,6 +1395,11 @@ def status():
             "gpu_processing": st.get("gpu_processing", False),
             "gpu_enabled": ENABLE_GPU_OFFLOAD,
             "timestamp": int(current_time),
+            
+            # Wio Terminal compatibility fields
+            "current_task": st.get("step", "idle"),
+            "targets_found": st.get("networks_found", 0),
+            "gpu_status": st.get("gpu_status", "idle"),
             "is_stale": time_since_update > 10  # Consider stale if no update in 10 seconds
         }
         

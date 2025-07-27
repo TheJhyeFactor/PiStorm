@@ -92,7 +92,7 @@ def test_monitor_mode():
     # Clean up any old test files
     run_cmd("sudo rm -f /tmp/monitor_test*")
     
-    # Method 1: Try tcpdump first (more reliable)
+    # Method 1: Try tcpdump first (more reliable) - FIXED SYNTAX
     print("🔧 Testing with tcpdump (5 seconds)...")
     cmd = f"timeout 5 sudo tcpdump -i {mon_iface} -c 10 -w /tmp/monitor_tcpdump.pcap"
     rc, out, err = run_cmd(cmd, timeout=8)
