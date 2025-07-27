@@ -25,6 +25,9 @@ A Windows GPU-accelerated processing station for WiFi security testing, designed
 
 ## 📦 Quick Setup
 
+> **🚀 NEW! Complete Step-by-Step Setup Guide Available**  
+> **For detailed installation instructions, see: [WINDOWS_GPU_SETUP.md](WINDOWS_GPU_SETUP.md)**
+
 ### 1. Install Critical Tools via WSL
 ```bash
 # Install WSL with Ubuntu (CRITICAL for .cap conversion)
