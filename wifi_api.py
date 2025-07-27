@@ -2127,6 +2127,210 @@ def analyze_latest_capture():
         logger.error(f"Analysis error: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
+# -------------- TESTING ENDPOINTS --------------------
+
+@app.route("/ping", methods=["GET"])
+def ping():
+    """Simple connectivity test"""
+    return jsonify({"status": "pong", "timestamp": datetime.now().isoformat()}), 200
+
+@app.route("/health", methods=["GET"])
+@require_api_key
+def health_check():
+    """System health check for testing"""
+    try:
+        import psutil
+        
+        # Get system stats
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        # Temperature (Pi specific)
+        try:
+            temp_result = subprocess.run(['vcgencmd', 'measure_temp'], 
+                                       capture_output=True, text=True, timeout=5)
+            if temp_result.returncode == 0:
+                temp_str = temp_result.stdout.strip()
+                temperature = float(temp_str.split('=')[1].split("'")[0])
+            else:
+                temperature = None
+        except:
+            temperature = None
+        
+        health_data = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "cpu_usage": cpu_percent,
+            "memory_usage": memory.percent,
+            "disk_usage": disk.percent,
+            "temperature": temperature,
+            "interfaces": {
+                "scan": interface_state.get('scan_iface'),
+                "monitor": interface_state.get('mon_iface')
+            },
+            "wordlists_count": len(interface_state.get('wordlists', [])),
+            "gpu_enabled": os.environ.get("ENABLE_GPU_OFFLOAD", "false").lower() == "true"
+        }
+        
+        return jsonify(health_data), 200
+        
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route("/test_monitor", methods=["GET"])
+@require_api_key
+def test_monitor_mode():
+    """Test monitor mode capability"""
+    try:
+        from test_monitor import test_monitor_mode_capability
+        
+        result = test_monitor_mode_capability()
+        return jsonify(result), 200
+        
+    except ImportError:
+        # Fallback basic test
+        try:
+            mon_iface = interface_state.get('mon_iface', MON_IFACE)
+            
+            # Test interface exists
+            result = subprocess.run(['iwconfig', mon_iface], 
+                                  capture_output=True, text=True, timeout=5)
+            
+            if result.returncode == 0 and 'Mode:Monitor' in result.stdout:
+                # Quick packet capture test
+                cap_result = subprocess.run([
+                    'timeout', '5', 'tcpdump', '-i', mon_iface, '-c', '1'
+                ], capture_output=True, text=True)
+                
+                packets_captured = 1 if cap_result.returncode == 0 else 0
+                
+                return jsonify({
+                    "monitor_mode_ok": True,
+                    "interface": mon_iface,
+                    "packets_captured": packets_captured,
+                    "test_duration": 5
+                }), 200
+            else:
+                return jsonify({
+                    "monitor_mode_ok": False,
+                    "interface": mon_iface,
+                    "error": "Monitor mode not detected"
+                }), 200
+                
+        except Exception as e:
+            return jsonify({
+                "monitor_mode_ok": False,
+                "error": str(e)
+            }), 200
+    
+    except Exception as e:
+        logger.error(f"Monitor test error: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route("/gpu_status", methods=["POST"])
+@require_api_key
+def update_gpu_status():
+    """Receive GPU processing status updates"""
+    try:
+        data = request.get_json() or {}
+        
+        with state_lock:
+            attack_state["gpu_status"] = data.get("status", "unknown")
+            attack_state["gpu_progress"] = data.get("progress", 0)
+            attack_state["gpu_filename"] = data.get("filename", "")
+            attack_state["gpu_info"] = data.get("gpu_info", "")
+            attack_state["last_gpu_update"] = datetime.now().isoformat()
+        
+        logger.info(f"GPU Status Update: {data.get('status')} - {data.get('progress')}%")
+        return jsonify({"status": "received"}), 200
+        
+    except Exception as e:
+        logger.error(f"GPU status update error: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route("/crack_result", methods=["POST"])
+@require_api_key
+def receive_crack_result():
+    """Receive crack result from GPU PC"""
+    try:
+        data = request.get_json() or {}
+        
+        target = data.get("target", "")
+        password = data.get("password", "")
+        timestamp = data.get("timestamp", "")
+        cracked_by = data.get("cracked_by", "")
+        
+        with state_lock:
+            if password not in ["NOT FOUND", "ERROR"]:
+                attack_state["result"] = password
+                attack_state["step"] = "completed"
+                attack_state["progress"] = 100
+            else:
+                attack_state["result"] = password
+                attack_state["step"] = "failed" if password == "ERROR" else "completed"
+                attack_state["progress"] = 100
+            
+            attack_state["running"] = False
+            attack_state["crack_timestamp"] = timestamp
+            attack_state["cracked_by"] = cracked_by
+        
+        logger.info(f"Crack Result: {target} -> {password} (by {cracked_by})")
+        return jsonify({"status": "received"}), 200
+        
+    except Exception as e:
+        logger.error(f"Crack result error: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route("/attack", methods=["POST"])
+@require_api_key
+def test_attack():
+    """Test attack functionality with safety checks"""
+    try:
+        data = request.get_json() or {}
+        ssid = data.get("ssid", "").strip()
+        test_mode = data.get("test_mode", False)
+        capture_time = data.get("capture_time", 10)
+        
+        if not ssid:
+            return jsonify({"error": "No SSID provided"}), 400
+        
+        # Check if attack already running
+        with state_lock:
+            if attack_state["running"]:
+                return jsonify({"error": "Attack already running"}), 409
+        
+        if test_mode:
+            # Test mode - don't actually deauth, just test capture
+            logger.info(f"TEST MODE: Testing capture on {ssid}")
+            
+            # Simulate capture test
+            time.sleep(capture_time)
+            
+            return jsonify({
+                "status": "test_completed",
+                "ssid": ssid,
+                "handshake_captured": False,  # Always false in test mode
+                "filename": f"test-{ssid}-{int(time.time())}.cap",
+                "test_mode": True,
+                "message": "Test completed - no actual deauth performed"
+            }), 200
+        else:
+            # Real attack mode - use existing attack_worker
+            t = threading.Thread(target=attack_worker, args=(ssid,), daemon=True)
+            t.start()
+            
+            return jsonify({
+                "status": "started",
+                "ssid": ssid,
+                "message": "Attack started"
+            }), 200
+        
+    except Exception as e:
+        logger.error(f"Test attack error: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
 # Error handlers
 @app.errorhandler(404)
 def not_found(error):
